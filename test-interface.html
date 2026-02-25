@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NN Insurance MCP Server Test Interface</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 1200px; margin: 0 auto; padding: 20px; }
+        .tool-section { border: 1px solid #ddd; margin: 20px 0; padding: 20px; border-radius: 8px; }
+        .tool-section h3 { color: #2c3e50; margin-top: 0; }
+        button { background: #3498db; color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; margin: 5px 0; }
+        button:hover { background: #2980b9; }
+        .output { background: #f8f9fa; border: 1px solid #e9ecef; padding: 15px; border-radius: 4px; white-space: pre-wrap; font-family: monospace; max-height: 300px; overflow-y: auto; }
+        .form-group { margin: 10px 0; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input, select { padding: 8px; border: 1px solid #ddd; border-radius: 4px; width: 200px; }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+    </style>
+</head>
+<body>
+    <h1>🏢 NN Insurance MCP Server Test Interface</h1>
+    <p>Test your MCP server tools directly from this web interface!</p>
+
+    <div class="tool-section">
+        <h3>🌐 Server Status</h3>
+        <button onclick="checkHealth()">Check Server Health</button>
+        <button onclick="listTools()">List All Tools</button>
+        <div id="status-output" class="output"></div>
+    </div>
+
+    <div class="grid">
+        <div class="tool-section">
+            <h3>📄 Browse Insurance Page</h3>
+            <div class="form-group">
+                <label>
+                    <input type="checkbox" id="include-html"> Include HTML
+                </label>
+            </div>
+            <button onclick="browsePage()">Browse NN Insurance Page</button>
+            <button onclick="extractText()">Extract Text Only</button>
+            <button onclick="getMetadata()">Get Page Metadata</button>
+            <div id="browse-output" class="output"></div>
+        </div>
+
+        <div class="tool-section">
+            <h3>📋 Policy Information</h3>
+            <button onclick="getPolicyInfo()">Get RGF Policy Info</button>
+            <button onclick="getQuestionnaire()">Get Questionnaire</button>
+            <div id="policy-output" class="output"></div>
+        </div>
+    </div>
+
+    <div class="tool-section">
+        <h3>🎯 Policy Recommendation</h3>
+        <div class="grid">
+            <div>
+                <div class="form-group">
+                    <label>Age:</label>
+                    <input type="number" id="age" value="30" min="18" max="100">
+                </div>
+                <div class="form-group">
+                    <label>Driving Experience (years):</label>
+                    <input type="number" id="experience" value="10" min="0" max="50">
+                </div>
+                <div class="form-group">
+                    <label>Vehicle Type:</label>
+                    <select id="vehicle-type">
+                        <option value="sedan">Sedan</option>
+                        <option value="suv">SUV</option>
+                        <option value="van">Van</option>
+                        <option value="sports car">Sports Car</option>
+                        <option value="other">Other</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Annual Mileage (km):</label>
+                    <input type="number" id="mileage" value="15000" min="1000" max="100000">
+                </div>
+            </div>
+            <div>
+                <div class="form-group">
+                    <label>Driving Habits:</label>
+                    <select id="habits">
+                        <option value="urban">Urban (city driving)</option>
+                        <option value="highway">Highway (long distances)</option>
+                        <option value="mixed">Mixed</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Had Accidents?</label>
+                    <select id="accidents">
+                        <option value="false">No</option>
+                        <option value="true">Yes</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Vehicle Value (€):</label>
+                    <input type="number" id="vehicle-value" value="25000" min="1000" max="200000">
+                </div>
+                <div class="form-group">
+                    <label>Budget Range:</label>
+                    <select id="budget">
+                        <option value="€50-100">€50-100</option>
+                        <option value="€100-150">€100-150</option>
+                        <option value="€150-200">€150-200</option>
+                        <option value="€200+">€200+</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <button onclick="getRecommendation()">Get Policy Recommendation</button>
+        <div id="recommendation-output" class="output"></div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000';
+
+        async function makeRequest(endpoint, method = 'GET', body = null) {
+            try {
+                const response = await fetch(API_BASE + endpoint, {
+                    method,
+                    headers: body ? { 'Content-Type': 'application/json' } : {},
+                    body: body ? JSON.stringify(body) : null
+                });
+                return await response.json();
+            } catch (error) {
+                return { error: error.message };
+            }
+        }
+
+        async function checkHealth() {
+            const result = await makeRequest('/health');
+            document.getElementById('status-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function listTools() {
+            const result = await makeRequest('/api/tools');
+            document.getElementById('status-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function browsePage() {
+            const includeHtml = document.getElementById('include-html').checked;
+            const result = await makeRequest('/api/tools/browse_page', 'POST', { include_html: includeHtml });
+            document.getElementById('browse-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function extractText() {
+            const result = await makeRequest('/api/tools/extract_text', 'POST');
+            document.getElementById('browse-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function getMetadata() {
+            const result = await makeRequest('/api/tools/get_page_metadata', 'POST');
+            document.getElementById('browse-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function getPolicyInfo() {
+            const result = await makeRequest('/api/tools/get_rgf_policy_info', 'POST');
+            document.getElementById('policy-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function getQuestionnaire() {
+            const result = await makeRequest('/api/tools/get_policy_questionnaire', 'POST');
+            document.getElementById('policy-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        async function getRecommendation() {
+            const data = {
+                age: parseInt(document.getElementById('age').value),
+                driving_experience: parseInt(document.getElementById('experience').value),
+                vehicle_type: document.getElementById('vehicle-type').value,
+                annual_mileage: parseInt(document.getElementById('mileage').value),
+                driving_habits: document.getElementById('habits').value,
+                has_accidents: document.getElementById('accidents').value === 'true',
+                vehicle_value: parseInt(document.getElementById('vehicle-value').value),
+                budget_range: document.getElementById('budget').value
+            };
+            
+            const result = await makeRequest('/api/tools/recommend_policy', 'POST', data);
+            document.getElementById('recommendation-output').textContent = JSON.stringify(result, null, 2);
+        }
+
+        // Auto-load server status on page load
+        checkHealth();
+    </script>
+</body>
+</html>

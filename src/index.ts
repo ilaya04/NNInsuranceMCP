@@ -573,7 +573,7 @@ function setupRequestHandlers() {
   });
 }
 
-// Setup HTTP server with Express
+// Setup HTTP server with Express and MCP over HTTP
 function setupHttpServer() {
   const app = express();
   app.use(cors());
@@ -587,6 +587,169 @@ function setupHttpServer() {
   // List all available tools
   app.get("/api/tools", (_req: Request, res: Response) => {
     res.json({ tools });
+  });
+
+  // MCP over HTTP endpoints for MCP Inspector compatibility
+  
+  // Client registration endpoint (required by MCP Inspector)
+  app.post('/register', (req: Request, res: Response) => {
+    res.json({
+      client_id: 'nn-insurance-mcp-client',
+      client_secret: 'dummy-secret'
+    });
+  });
+
+  // OAuth token endpoint (required by MCP Inspector)
+  app.post('/oauth/token', (req: Request, res: Response) => {
+    res.json({
+      access_token: 'dummy-token',
+      token_type: 'bearer',
+      expires_in: 3600
+    });
+  });
+
+  // MCP capabilities endpoint
+  app.get('/capabilities', (req: Request, res: Response) => {
+    res.json({
+      protocolVersion: "2024-11-05",
+      capabilities: {
+        tools: {}
+      },
+      serverInfo: {
+        name: "nn-insurance-mcp",
+        version: "1.0.0"
+      }
+    });
+  });
+
+  // MCP over HTTP Server-Sent Events endpoint
+  app.get('/sse', (req: Request, res: Response) => {
+    res.writeHead(200, {
+      'Content-Type': 'text/event-stream',
+      'Cache-Control': 'no-cache',
+      'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*',
+      'Access-Control-Allow-Headers': 'Authorization, Content-Type, Cache-Control',
+      'Access-Control-Allow-Methods': 'GET, POST, OPTIONS'
+    });
+
+    // Send initial connection event
+    res.write(`data: ${JSON.stringify({
+      jsonrpc: "2.0", 
+      method: "initialized",
+      params: {}
+    })}\n\n`);
+
+    // Keep connection alive
+    const keepAlive = setInterval(() => {
+      res.write(': keepalive\n\n');
+    }, 30000);
+
+    req.on('close', () => {
+      clearInterval(keepAlive);
+      res.end();
+    });
+  });
+
+  // MCP message posting endpoint
+  app.post('/messages', async (req: Request, res: Response) => {
+    try {
+      const message = req.body;
+      
+      if (message.method === 'initialize') {
+        res.json({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            protocolVersion: "2024-11-05",
+            capabilities: { tools: {} },
+            serverInfo: {
+              name: "nn-insurance-mcp",
+              version: "1.0.0"
+            }
+          }
+        });
+      } else if (message.method === 'tools/list') {
+        res.json({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: { tools }
+        });
+      } else if (message.method === 'tools/call') {
+        const toolName = message.params.name;
+        const toolInput = message.params.arguments || {};
+        let result: string;
+
+        switch (toolName) {
+          case "browse_page":
+            result = await browsePage((toolInput.include_html as boolean) || false);
+            break;
+          case "extract_text":
+            result = await extractText();
+            break;
+          case "get_page_metadata":
+            result = await getPageMetadata();
+            break;
+          case "get_rgf_policy_info":
+            result = await getRGFPolicyInfo();
+            break;
+          case "get_policy_questionnaire":
+            result = getPolicyQuestionnaire();
+            break;
+          case "recommend_policy": {
+            const profile: UserProfile = {
+              age: toolInput.age as number | undefined,
+              drivingExperience: toolInput.driving_experience as number | undefined,
+              vehicleType: toolInput.vehicle_type as string | undefined,
+              annualMileage: toolInput.annual_mileage as number | undefined,
+              drivingHabits: toolInput.driving_habits as string | undefined,
+              hasAccidents: toolInput.has_accidents as boolean | undefined,
+              accidentCount: toolInput.accident_count as number | undefined,
+              vehicleValue: toolInput.vehicle_value as number | undefined,
+              budgetRange: toolInput.budget_range as string | undefined,
+            };
+            result = recommendPolicy(profile);
+            break;
+          }
+          default:
+            throw new Error(`Unknown tool: ${toolName}`);
+        }
+
+        res.json({
+          jsonrpc: "2.0",
+          id: message.id,
+          result: {
+            content: [{ type: "text", text: result }]
+          }
+        });
+      } else {
+        res.status(400).json({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: {
+            code: -32601,
+            message: `Method not found: ${message.method}`
+          }
+        });
+      }
+    } catch (error) {
+      res.status(500).json({
+        jsonrpc: "2.0",
+        id: req.body.id,
+        error: {
+          code: -32000,
+          message: error instanceof Error ? error.message : String(error)
+        }
+      });
+    }
+  });
+
+  // Options handler for CORS preflight
+  app.options('/messages', (req: Request, res: Response) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Authorization, Content-Type, Cache-Control');
+    res.sendStatus(204);
   });
 
   // Browse page endpoint
@@ -728,18 +891,17 @@ function setupHttpServer() {
   return app;
 }
 
-// Start both HTTP and MCP servers
+// Start either HTTP or MCP server based on mode
 async function main() {
-  // Start HTTP server
-  setupHttpServer();
-
-  // Optionally start MCP stdio server if in MCP mode
   if (process.env.MCP_MODE === "true") {
+    // MCP stdio server mode
     const transport = new StdioServerTransport();
     setupRequestHandlers();
     await server.connect(transport);
     console.error("MCP Server running on stdio");
   } else {
+    // HTTP server mode (default)
+    setupHttpServer();
     console.error("HTTP Server is primary interface");
   }
 }
